@@ -1,0 +1,13 @@
+{
+  "name": "خدماتي - المنصة الذكية",
+  "description": "تطبيق الخدمات المتكامل للهواتف الذكية",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ],
+  "theme_color": "#2563eb",
+  "background_color": "#F8FAFC",
+  "display": "standalone",
+  "orientation": "portrait"
+}

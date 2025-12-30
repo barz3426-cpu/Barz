@@ -1,0 +1,62 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // دالة للتحقق من تسجيل الدخول
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // دالة للتحقق من هوية المستخدم
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // دالة للتحقق من دور المستخدم (Admin)
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    // قواعد مجموعة المستخدمين
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isOwner(userId) || isAdmin());
+    }
+
+    // قواعد المنتجات
+    match /products/{productId} {
+      allow read: if true; // الجميع يمكنه رؤية المنتجات
+      allow create, update, delete: if isSignedIn() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STORE_OWNER' || isAdmin());
+    }
+
+    // قواعد الطلبات
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid || 
+        resource.data.driverId == request.auth.uid || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STORE_OWNER' ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid || 
+        resource.data.driverId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STORE_OWNER' ||
+        isAdmin()
+      );
+
+      // قواعد المحادثات داخل الطلبات
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // قواعد البنرات الإعلانية
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isSignedIn() && isAdmin();
+    }
+  }
+}
