@@ -4,10 +4,10 @@ import {
   Search, ShoppingCart, Star, Heart, ChevronRight, 
   Package, Sparkles, User as UserIcon, Plus, Minus, X, 
   CheckCircle2, Clock, Bot, Send, ArrowRight, Loader2, MessageSquare,
-  MapPin, Flame, Zap, Navigation, Phone, Stars, Rocket
+  MapPin, Flame, Zap, Navigation, Phone, Stars, Rocket, Grid
 } from 'lucide-react';
 import { db } from '../../services/db';
-import { Product, Banner, User as UserType, Order, Service, Store } from '../../types';
+import { Product, Banner, User as UserType, Order, Service, Store, SubCategory } from '../../types';
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { ChatView } from './ChatView';
 import L from 'leaflet';
@@ -39,12 +39,17 @@ const TrackingMap: React.FC<{ location: any }> = ({ location }) => {
 
 export const CustomerDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'HOME' | 'ORDERS' | 'FAVORITES'>('HOME');
+  
+  // Navigation State
   const [selectedCategory, setSelectedCategory] = useState<Service | null>(null);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<SubCategory | null>(null);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
+  
   const [searchQuery, setSearchQuery] = useState('');
   
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
@@ -119,13 +124,33 @@ export const CustomerDashboard: React.FC = () => {
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [p, b, u, s, st, c, ord] = await Promise.all([
+    // If a category is selected, fetch its subcategories
+    let currentSubCats: SubCategory[] = [];
+    if (selectedCategory) {
+      currentSubCats = await db.getSubCategories(selectedCategory.id);
+    }
+    setSubCategories(currentSubCats);
+
+    // If sub-category is selected, fetch stores filtered by it. 
+    // If only category selected (and no subcategories exist), fetch stores by category.
+    let currentStores: Store[] = [];
+    if (selectedSubCategory) {
+      currentStores = await db.getStores(undefined, selectedSubCategory.id);
+    } else if (selectedCategory && currentSubCats.length === 0) {
+      currentStores = await db.getStores(selectedCategory.id);
+    } else if (!selectedCategory) {
+       // Fetch featured/all stores for home page
+       currentStores = await db.getStores(); 
+    }
+    setStores(currentStores);
+
+    const [p, b, u, s, c, ord] = await Promise.all([
       db.getProducts(), db.getBanners(), db.getCurrentUser(),
-      db.getServices(), db.getStores(), db.getCart(), db.getOrders()
+      db.getServices(), db.getCart(), db.getOrders()
     ]);
     setProducts(p); setBanners(b); setCurrentUser(u);
-    setServices(s); setStores(st); setCart(c); setOrders(ord);
-  }, []);
+    setServices(s); setCart(c); setOrders(ord);
+  }, [selectedCategory, selectedSubCategory]);
 
   useEffect(() => {
     loadData();
@@ -159,14 +184,7 @@ export const CustomerDashboard: React.FC = () => {
         - مساعدة المستخدم على استخدام التطبيق
         - الإجابة فقط على الأسئلة المتعلقة بالتطبيق
         - توضيح الإعدادات، الأدوات، والخدمات الموجودة داخل التطبيق
-
-        ممنوع عليك:
-        - التحدث عن أي موضوع خارج التطبيق
-        - إعطاء معلومات عامة، تعليمية، سياسية، دينية، أو تقنية غير متعلقة بالتطبيق
-        - اقتراح تطبيقات أخرى أو مواقع خارجية
-        - الإجابة على أسئلة لا تخص التطبيق
-
-        أسلوبك: مهذب وواضح.
+        - أسلوبك: مهذب وواضح.
       `;
       
       const response: GenerateContentResponse = await ai.models.generateContent({
@@ -196,6 +214,24 @@ export const CustomerDashboard: React.FC = () => {
     }
   };
 
+  // Logic to handle back navigation
+  const handleBack = () => {
+    if (selectedStore) {
+      setSelectedStore(null);
+    } else if (selectedSubCategory) {
+      setSelectedSubCategory(null);
+    } else if (selectedCategory) {
+      setSelectedCategory(null);
+    }
+  };
+
+  const getHeaderTitle = () => {
+    if (selectedStore) return selectedStore.name;
+    if (selectedSubCategory) return selectedSubCategory.title;
+    if (selectedCategory) return selectedCategory.title;
+    return 'الرئيسية';
+  };
+
   return (
     <div className="animate-fadeIn min-h-screen pb-40">
       {/* Premium Header */}
@@ -217,8 +253,8 @@ export const CustomerDashboard: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {(selectedCategory || selectedStore) && (
-            <button onClick={() => selectedStore ? setSelectedStore(null) : setSelectedCategory(null)} className="w-14 h-14 bg-slate-900 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all">
+          {(selectedCategory || selectedSubCategory || selectedStore) && (
+            <button onClick={handleBack} className="w-14 h-14 bg-slate-900 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all">
               <ArrowRight size={20} />
             </button>
           )}
@@ -226,7 +262,7 @@ export const CustomerDashboard: React.FC = () => {
             <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
             <input 
               type="text" 
-              placeholder="ابحث عن وجبة، متجر، أو خدمة..."
+              placeholder={`ابحث في ${getHeaderTitle()}...`}
               className="w-full h-15 pr-14 pl-6 bg-white border border-slate-100 rounded-3xl shadow-[0_5px_15px_rgba(0,0,0,0.02)] outline-none font-bold text-sm focus:ring-4 focus:ring-blue-600/5 transition-all"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -238,7 +274,9 @@ export const CustomerDashboard: React.FC = () => {
       <div className="mt-10">
         {activeTab === 'HOME' && (
           <div className="space-y-12 animate-reveal">
-            {!selectedCategory && !selectedStore && (
+            
+            {/* Level 1: Home - Show Categories */}
+            {!selectedCategory && (
               <>
                 {/* Enhanced Interactive Banners */}
                 <div className="px-6">
@@ -298,12 +336,12 @@ export const CustomerDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Nearby Stores */}
-                <div className="px-6">
+                 {/* Featured Stores (Mixed) */}
+                 <div className="px-6">
                   <h3 className="text-xl font-black mb-6">المتاجر المميزة <Stars size={18} className="text-amber-400 inline" /></h3>
                   <div className="space-y-6">
-                    {stores.map(store => (
-                       <div key={store.id} onClick={() => setSelectedStore(store)} className="bg-white p-5 rounded-[40px] border border-slate-50 shadow-[0_15px_40px_rgba(0,0,0,0.03)] flex items-center gap-5 active:scale-[0.98] transition-all group cursor-pointer">
+                    {stores.slice(0, 3).map(store => (
+                       <div key={store.id} onClick={() => { setSelectedCategory(services.find(s=>s.id === store.categoryId)||null); setSelectedStore(store); }} className="bg-white p-5 rounded-[40px] border border-slate-50 shadow-[0_15px_40px_rgba(0,0,0,0.03)] flex items-center gap-5 active:scale-[0.98] transition-all group cursor-pointer">
                           <div className="w-20 h-20 rounded-[28px] overflow-hidden shrink-0 shadow-lg group-hover:scale-105 transition-transform">
                             <img src={store.image} className="w-full h-full object-cover" />
                           </div>
@@ -324,6 +362,99 @@ export const CustomerDashboard: React.FC = () => {
               </>
             )}
 
+            {/* Level 2: Category Selected -> Show SubCategories (or Stores if no subs) */}
+            {selectedCategory && !selectedSubCategory && !selectedStore && (
+              <div className="px-6 animate-reveal">
+                 <h3 className="text-2xl font-black mb-6 flex items-center gap-2">
+                   أقسام {selectedCategory.title}
+                 </h3>
+                 
+                 {subCategories.length > 0 ? (
+                   <div className="grid grid-cols-2 gap-4">
+                     {subCategories.map(sub => (
+                       <button 
+                         key={sub.id} 
+                         onClick={() => setSelectedSubCategory(sub)}
+                         className="relative h-40 rounded-[32px] overflow-hidden group shadow-lg active:scale-95 transition-all"
+                       >
+                         <img src={sub.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[2px] group-hover:backdrop-blur-0 transition-all">
+                           <span className="text-white font-black text-lg text-center px-4">{sub.title}</span>
+                         </div>
+                       </button>
+                     ))}
+                   </div>
+                 ) : (
+                   <div className="text-center py-10 opacity-50">لا توجد أقسام فرعية، يتم عرض المتاجر مباشرة...</div>
+                 )}
+
+                 {/* Fallback to show stores directly if no subcategories or just to show all in this category */}
+                 <div className="mt-10">
+                   <h3 className="text-xl font-black mb-6">جميع المتاجر في {selectedCategory.title}</h3>
+                   <div className="space-y-6">
+                    {stores.map(store => (
+                       <div key={store.id} onClick={() => setSelectedStore(store)} className="bg-white p-5 rounded-[40px] border border-slate-50 shadow-[0_15px_40px_rgba(0,0,0,0.03)] flex items-center gap-5 active:scale-[0.98] transition-all group cursor-pointer">
+                          <div className="w-20 h-20 rounded-[28px] overflow-hidden shrink-0 shadow-lg group-hover:scale-105 transition-transform">
+                            <img src={store.image} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-black text-slate-900 text-lg leading-none">{store.name}</h4>
+                            <p className="text-xs text-slate-400 mt-2 font-bold line-clamp-1">{store.description}</p>
+                            <div className="flex items-center gap-4 mt-3">
+                              <div className="flex items-center gap-1 text-amber-500 font-black text-[10px]"><Star size={12} fill="currentColor"/> {store.rating}</div>
+                              <div className="flex items-center gap-1 text-slate-400 font-bold text-[10px]"><Clock size={12}/> {store.deliveryTime}</div>
+                            </div>
+                          </div>
+                          <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                             <ChevronRight size={20} />
+                          </div>
+                       </div>
+                    ))}
+                  </div>
+                 </div>
+              </div>
+            )}
+
+            {/* Level 3: SubCategory Selected -> Show Stores */}
+            {selectedSubCategory && !selectedStore && (
+              <div className="px-6 animate-reveal">
+                <div className="mb-8 p-6 bg-blue-600 rounded-[32px] text-white relative overflow-hidden">
+                   <div className="relative z-10">
+                     <p className="text-blue-200 text-xs font-bold uppercase tracking-widest">{selectedCategory?.title}</p>
+                     <h3 className="text-3xl font-black mt-1">{selectedSubCategory.title}</h3>
+                   </div>
+                   <img src={selectedSubCategory.image} className="absolute top-0 left-0 w-full h-full object-cover opacity-20" />
+                </div>
+
+                <div className="space-y-6">
+                    {stores.length > 0 ? stores.map(store => (
+                       <div key={store.id} onClick={() => setSelectedStore(store)} className="bg-white p-5 rounded-[40px] border border-slate-50 shadow-[0_15px_40px_rgba(0,0,0,0.03)] flex items-center gap-5 active:scale-[0.98] transition-all group cursor-pointer">
+                          <div className="w-20 h-20 rounded-[28px] overflow-hidden shrink-0 shadow-lg group-hover:scale-105 transition-transform">
+                            <img src={store.image} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-black text-slate-900 text-lg leading-none">{store.name}</h4>
+                            <p className="text-xs text-slate-400 mt-2 font-bold line-clamp-1">{store.description}</p>
+                            <div className="flex items-center gap-4 mt-3">
+                              <div className="flex items-center gap-1 text-amber-500 font-black text-[10px]"><Star size={12} fill="currentColor"/> {store.rating}</div>
+                              <div className="flex items-center gap-1 text-slate-400 font-bold text-[10px]"><Clock size={12}/> {store.deliveryTime}</div>
+                            </div>
+                          </div>
+                          <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                             <ChevronRight size={20} />
+                          </div>
+                       </div>
+                    )) : (
+                      <div className="py-20 text-center opacity-50 font-black">
+                        <Grid size={48} className="mx-auto mb-4 text-slate-300"/>
+                        لا توجد متاجر متاحة في هذا القسم حالياً
+                      </div>
+                    )}
+                </div>
+              </div>
+            )}
+
+            {/* Level 4: Store Selected -> Show Products */}
             {selectedStore && (
               <div className="px-6 animate-reveal">
                 <div className="relative h-64 w-full rounded-[48px] overflow-hidden shadow-2xl mb-8">
@@ -343,6 +474,9 @@ export const CustomerDashboard: React.FC = () => {
                       onToggleFav={() => db.toggleFavorite(p.id)}
                     />
                   ))}
+                  {products.filter(p => p.storeId === selectedStore.id).length === 0 && (
+                    <div className="col-span-2 text-center py-10 opacity-50 font-black">لا توجد منتجات معروضة حالياً</div>
+                  )}
                 </div>
               </div>
             )}

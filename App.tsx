@@ -107,10 +107,8 @@ const App: React.FC = () => {
   
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.CUSTOMER);
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [demoLoading, setDemoLoading] = useState<UserRole | null>(null);
 
   const handleLogout = () => {
     db.logout();
@@ -120,7 +118,7 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 4000); // 4 seconds for cinematic feel
+    const timer = setTimeout(() => setShowSplash(false), 4000); 
 
     const checkAuth = async () => {
       try {
@@ -162,7 +160,9 @@ const App: React.FC = () => {
     if (e) e.preventDefault();
     let loginPhone = phone;
     let loginPass = password;
+    
     if (demoRole) {
+      setDemoLoading(demoRole);
       const demoMapping: any = {
         [UserRole.CUSTOMER]: '0500000001',
         [UserRole.STORE_OWNER]: '0500000002',
@@ -171,20 +171,32 @@ const App: React.FC = () => {
       };
       loginPhone = demoMapping[demoRole];
       loginPass = '123';
+    } else {
+      setLoading(true);
     }
-    if (!loginPhone || !loginPass) return setError('يرجى ملء الحقول');
+
+    if (!loginPhone || !loginPass) {
+      setLoading(false);
+      setDemoLoading(null);
+      return setError('يرجى ملء الحقول');
+    }
+
     setError('');
-    setLoading(true);
+    
     try {
       const u = await db.loginUser(loginPhone, loginPass);
       setUser(u);
       setRole(u.role);
     } catch (err: any) {
-      setError(err.message);
+      setError('فشل تسجيل الدخول. يرجى التأكد من البيانات أو انتظار تهيئة النظام.');
+      console.error(err);
     } finally {
       setLoading(false);
+      setDemoLoading(null);
     }
   };
+
+  const [showPassword, setShowPassword] = useState(false);
 
   if (showSplash) return <SplashScreen />;
 
@@ -202,7 +214,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="bg-white p-8 rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-slate-100">
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={(e) => handleLogin(e)} className="space-y-5">
             {error && <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black border border-red-100">{error}</div>}
             
             <div className="space-y-4">
@@ -217,22 +229,31 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <button type="submit" disabled={loading} className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black shadow-xl shadow-blue-500/30 flex items-center justify-center gap-4 text-lg active:scale-95 transition-all">
+            <button type="submit" disabled={loading} className="w-full py-5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-3xl font-black shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-4 text-lg active:scale-95 transition-all hover:shadow-indigo-500/40">
               {loading ? <Loader2 className="animate-spin" /> : 'دخول للمنصة'}
             </button>
           </form>
 
-          <div className="mt-10">
-            <p className="text-center text-[10px] font-black text-slate-300 uppercase tracking-widest mb-6">الدخول السريع للتجربة</p>
+          <div className="mt-10 pt-8 border-t border-slate-50">
+            <p className="text-center text-[10px] font-black text-slate-300 uppercase tracking-widest mb-6 flex items-center justify-center gap-2">
+              <Sparkles size={12}/> الدخول التجريبي السريع
+            </p>
             <div className="grid grid-cols-4 gap-3">
                {[
-                 { role: UserRole.CUSTOMER, label: 'عميل' },
-                 { role: UserRole.STORE_OWNER, label: 'متجر' },
-                 { role: UserRole.DRIVER, label: 'سائق' },
-                 { role: UserRole.ADMIN, label: 'مدير' },
+                 { role: UserRole.CUSTOMER, label: 'عميل', icon: <UserIcon size={16}/>, color: 'text-blue-600 bg-blue-50 border-blue-100' },
+                 { role: UserRole.STORE_OWNER, label: 'متجر', icon: <ShoppingBag size={16}/>, color: 'text-purple-600 bg-purple-50 border-purple-100' },
+                 { role: UserRole.DRIVER, label: 'سائق', icon: <Truck size={16}/>, color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
+                 { role: UserRole.ADMIN, label: 'مدير', icon: <ShieldAlert size={16}/>, color: 'text-slate-600 bg-slate-100 border-slate-200' },
                ].map((demo) => (
-                 <button key={demo.role} type="button" onClick={() => handleLogin(undefined, demo.role)} className="p-3 bg-slate-50 hover:bg-blue-50 rounded-2xl border border-slate-100 text-[9px] font-black text-slate-600 hover:text-blue-600 transition-all active:scale-90">
-                  {demo.label}
+                 <button 
+                  key={demo.role} 
+                  type="button" 
+                  onClick={() => handleLogin(undefined, demo.role)} 
+                  disabled={demoLoading !== null}
+                  className={`p-3 rounded-2xl border flex flex-col items-center gap-2 transition-all active:scale-90 ${demo.color} ${demoLoading === demo.role ? 'opacity-50' : 'hover:scale-105'}`}
+                 >
+                  {demoLoading === demo.role ? <Loader2 className="animate-spin" size={16}/> : demo.icon}
+                  <span className="text-[9px] font-black">{demo.label}</span>
                 </button>
                ))}
             </div>

@@ -18,10 +18,18 @@ export interface Notification {
   type: 'ORDER' | 'WALLET' | 'SYSTEM';
 }
 
+export interface SubCategory {
+  id: string;
+  categoryId: string; // Links to Service (Parent Category)
+  title: string;
+  image?: string;
+}
+
 export interface Store {
   id: string;
   name: string;
   categoryId: string;
+  subCategoryId?: string; // New field to link to sub-category
   image: string;
   rating: number;
   deliveryTime: string;

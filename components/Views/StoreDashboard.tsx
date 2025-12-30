@@ -6,8 +6,7 @@ import {
   ShoppingBag, Tag, ChevronRight, AlertTriangle, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { db } from '../../services/db';
-import { Product, Order } from '../../types';
-import { SERVICES } from '../../constants';
+import { Product, Order, Service, SubCategory } from '../../types';
 import { generateProductDescription } from '../../geminiService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -15,6 +14,11 @@ export const StoreDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'ANALYTICS' | 'ORDERS' | 'INVENTORY'>('ANALYTICS');
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  
+  // Dynamic Categories Data
+  const [services, setServices] = useState<Service[]>([]);
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+  
   const [showAddModal, setShowAddModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -24,16 +28,29 @@ export const StoreDashboard: React.FC = () => {
     name: '',
     description: '',
     price: 0,
-    category: SERVICES[0].id,
+    category: '', // Dynamic ID
+    subCategoryId: '', // Dynamic ID
     image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500',
     stock: 10,
     discount: 0
   });
 
   const load = async () => {
-    const [p, o] = await Promise.all([db.getProducts(), db.getOrders()]);
+    const [p, o, s, subs] = await Promise.all([
+      db.getProducts(), 
+      db.getOrders(),
+      db.getServices(),
+      db.getSubCategories()
+    ]);
     setProducts(p);
     setOrders(o);
+    setServices(s);
+    setSubCategories(subs);
+
+    // Set default category if not set
+    if (s.length > 0 && !newProduct.category) {
+      setNewProduct(prev => ({ ...prev, category: s[0].id }));
+    }
   };
 
   useEffect(() => {
@@ -57,6 +74,11 @@ export const StoreDashboard: React.FC = () => {
 
   const lowStockProducts = useMemo(() => products.filter(p => p.stock < 5), [products]);
 
+  // Filter SubCategories based on selected Main Category
+  const availableSubCategories = useMemo(() => {
+    return subCategories.filter(sub => sub.categoryId === newProduct.category);
+  }, [subCategories, newProduct.category]);
+
   const handleAddProduct = async () => {
     if (!newProduct.name || newProduct.price <= 0) return alert('البيانات غير مكتملة');
     if (editingId) {
@@ -70,11 +92,24 @@ export const StoreDashboard: React.FC = () => {
   const closeModal = () => {
     setShowAddModal(false);
     setEditingId(null);
-    setNewProduct({ name: '', description: '', price: 0, category: SERVICES[0].id, image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500', stock: 10, discount: 0 });
+    setNewProduct({ 
+      name: '', 
+      description: '', 
+      price: 0, 
+      category: services.length > 0 ? services[0].id : '', 
+      subCategoryId: '',
+      image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500', 
+      stock: 10, 
+      discount: 0 
+    });
   };
 
   const openEditModal = (product: Product) => {
-    setNewProduct({ ...product, discount: product.discount || 0 });
+    setNewProduct({ 
+      ...product, 
+      discount: product.discount || 0,
+      subCategoryId: (product as any).subCategoryId || '' 
+    });
     setEditingId(product.id);
     setShowAddModal(true);
   };
@@ -225,12 +260,31 @@ export const StoreDashboard: React.FC = () => {
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">الاسم</label>
                   <input type="text" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-black text-sm" placeholder="مثلاً: وجبة برجر" />
                 </div>
+                
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">التصنيف</label>
-                  <select value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-black text-sm">
-                    {SERVICES.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">القسم الرئيسي</label>
+                  <select 
+                    value={newProduct.category} 
+                    onChange={e => setNewProduct({...newProduct, category: e.target.value, subCategoryId: ''})} 
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-black text-sm"
+                  >
+                    {services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                   </select>
                 </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">القسم الفرعي</label>
+                  <select 
+                    value={newProduct.subCategoryId} 
+                    onChange={e => setNewProduct({...newProduct, subCategoryId: e.target.value})} 
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-black text-sm"
+                    disabled={availableSubCategories.length === 0}
+                  >
+                    <option value="">-- اختر القسم الفرعي --</option>
+                    {availableSubCategories.map(sub => <option key={sub.id} value={sub.id}>{sub.title}</option>)}
+                  </select>
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">السعر (د.ع)</label>
                   <input type="number" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-black text-sm" />
